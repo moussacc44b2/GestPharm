@@ -1,0 +1,16 @@
+# Local environment files
+.env
+.env.local
+
+# IDE settings
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# SSH keys (just in case)
+id_ed25519*
+d:
+d:.pub

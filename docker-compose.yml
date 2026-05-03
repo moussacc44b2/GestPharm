@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+
+  # PostgreSQL 16
+  frontend:
+    command: sh -c "npm run dev -- -H 0.0.0.0"
+  postgres:
+    image: postgres:16-alpine
+    container_name: gestpharm_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: gestpharm
+      POSTGRES_USER: gestpharm
+      POSTGRES_PASSWORD: gestpharm_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U gestpharm" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: gestpharm_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Laravel Backend (PHP 8.3)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gestpharm_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://192.168.1.4:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: gestpharm
+      DB_USERNAME: gestpharm
+      DB_PASSWORD: gestpharm_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: php artisan serve --host=0.0.0.0 --port=8000
+
+  # Mailpit (Dev email testing)
+  mailpit:
+    image: axllent/mailpit
+    container_name: gestpharm_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  postgres_data:
+  redis_data:
