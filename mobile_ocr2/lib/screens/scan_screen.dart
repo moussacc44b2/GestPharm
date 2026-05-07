@@ -34,23 +34,18 @@ class _ScanScreenState extends State<ScanScreen> {
 
     try {
       // Run ML Kit OCR
-      print('try');
       final inputImage = InputImage.fromFilePath(image.path);
       final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final recognized = await recognizer.processImage(inputImage);
-      print('Running OCR on image: ${recognized.text}');
-
       recognizer.close();
 
       final rawText = recognized.text;
-      print('OCR Raw Text: $rawText');
 
       if (rawText.trim().isEmpty) {
         setState(() {
           _isProcessing = false;
           _statusMessage = 'No text found. Try a clearer image.';
         });
-        print('empty ocr result');
         return;
       }
 
@@ -58,7 +53,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
       // Parse the OCR text
       final items = _ocrService.parseInvoiceText(rawText);
-      print('Parsed Items: $items');
 
       setState(() {
         _isProcessing = false;
@@ -70,9 +64,7 @@ class _ScanScreenState extends State<ScanScreen> {
       if (items.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Could not extract any items. Please try again with a clearer image.',
-            ),
+            content: Text('Could not extract any items. Please try again with a clearer image.'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -82,7 +74,9 @@ class _ScanScreenState extends State<ScanScreen> {
       // Navigate to review screen
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ReviewScreen(items: items)),
+        MaterialPageRoute(
+          builder: (_) => ReviewScreen(items: items),
+        ),
       );
     } catch (e) {
       setState(() {
@@ -99,14 +93,8 @@ class _ScanScreenState extends State<ScanScreen> {
         title: const Text('Logout'),
         content: const Text('Are you sure you want to sign out?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout')),
         ],
       ),
     );
@@ -117,14 +105,12 @@ class _ScanScreenState extends State<ScanScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => LoginScreen(
-            onLogin: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const ScanScreen()),
-              );
-            },
-          ),
+          builder: (_) => LoginScreen(onLogin: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const ScanScreen()),
+            );
+          }),
         ),
       );
     }
@@ -136,10 +122,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'GestPharm Scanner',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text('GestPharm Scanner', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
           IconButton(
@@ -159,13 +142,9 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
-                    ),
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: colorScheme.outline.withValues(alpha: 0.3),
-                    ),
+                    border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
                   ),
                   child: _isProcessing
                       ? Column(
@@ -175,11 +154,8 @@ class _ScanScreenState extends State<ScanScreen> {
                             const SizedBox(height: 24),
                             Text(
                               _statusMessage,
-                              style: Theme.of(context).textTheme.bodyLarge
-                                  ?.copyWith(
-                                    color: colorScheme.onSurface.withValues(
-                                      alpha: 0.6,
-                                    ),
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    color: colorScheme.onSurface.withValues(alpha: 0.6),
                                   ),
                             ),
                           ],
@@ -202,22 +178,18 @@ class _ScanScreenState extends State<ScanScreen> {
                             const SizedBox(height: 24),
                             Text(
                               'Scan Invoice',
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
                             const SizedBox(height: 8),
                             Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 32),
                               child: Text(
                                 'Take a photo or upload an invoice to automatically extract medicines and quantities.',
                                 textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(
-                                      color: colorScheme.onSurface.withValues(
-                                        alpha: 0.6,
-                                      ),
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurface.withValues(alpha: 0.6),
                                     ),
                               ),
                             ),
@@ -232,22 +204,12 @@ class _ScanScreenState extends State<ScanScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: _isProcessing
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.photo_library_outlined),
+                      icon: const Icon(Icons.photo_library_outlined),
                       label: const Text('Gallery'),
-                      onPressed: _isProcessing
-                          ? null
-                          : () => _pickAndScan(ImageSource.gallery),
+                      onPressed: _isProcessing ? null : () => _pickAndScan(ImageSource.gallery),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                     ),
                   ),
@@ -255,28 +217,12 @@ class _ScanScreenState extends State<ScanScreen> {
                   Expanded(
                     flex: 2,
                     child: FilledButton.icon(
-                      icon: _isProcessing
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.camera_alt_rounded),
-                      label: Text(
-                        _isProcessing ? 'Processing...' : 'Take Photo',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: _isProcessing
-                          ? null
-                          : () => _pickAndScan(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt_rounded),
+                      label: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: _isProcessing ? null : () => _pickAndScan(ImageSource.camera),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                     ),
                   ),
