@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../services/ocr_service.dart';
 import '../services/api_service.dart';
 import 'review_screen.dart';
@@ -18,6 +19,7 @@ class _ScanScreenState extends State<ScanScreen> {
   final _picker = ImagePicker();
   final _ocrService = OcrService();
   String _statusMessage = 'Ready to scan';
+  List<Map<String, dynamic>> _scannedItems = [];
 
   Future<void> _pickAndScan(ImageSource source) async {
     final XFile? image = await _picker.pickImage(
@@ -27,17 +29,24 @@ class _ScanScreenState extends State<ScanScreen> {
     );
     if (image == null) return;
 
+    final croppedFile = await _cropImage(image.path);
+    if (croppedFile == null) return;
+
     setState(() {
       _isProcessing = true;
       _statusMessage = 'Analyzing invoice with AI...';
+      _scannedItems = [];
     });
 
     try {
       // Run ML Kit OCR
+      // Debug only (avoid_print can be enforced by lints)
+      // ignore: avoid_print
       print('try');
-      final inputImage = InputImage.fromFilePath(image.path);
+      final inputImage = InputImage.fromFilePath(croppedFile.path);
       final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final recognized = await recognizer.processImage(inputImage);
+      // ignore: avoid_print
       print('Running OCR on image: ${recognized.text}');
 
       recognizer.close();
@@ -50,7 +59,7 @@ class _ScanScreenState extends State<ScanScreen> {
           _isProcessing = false;
           _statusMessage = 'No text found. Try a clearer image.';
         });
-        print('empty ocr result');
+        // print('empty ocr result');
         return;
       }
 
@@ -63,6 +72,7 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {
         _isProcessing = false;
         _statusMessage = 'Ready to scan';
+        _scannedItems = items;
       });
 
       if (!mounted) return;
@@ -79,17 +89,33 @@ class _ScanScreenState extends State<ScanScreen> {
         return;
       }
 
-      // Navigate to review screen
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => ReviewScreen(items: items)),
-      );
+      // We still offer to navigate to review screen via a button in the UI
+      // or we can keep the automatic navigation if preferred, but since the user
+      // asked to "display the list items" here, I'll let them see it first.
     } catch (e) {
       setState(() {
         _isProcessing = false;
         _statusMessage = 'Error: ${e.toString()}';
       });
     }
+  }
+
+  Future<CroppedFile?> _cropImage(String path) async {
+    return await ImageCropper().cropImage(
+      sourcePath: path,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Adjust Invoice',
+          toolbarColor: Theme.of(context).colorScheme.primary,
+          toolbarWidgetColor: Colors.white,
+          initAspectRatio: CropAspectRatioPreset.original,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(
+          title: 'Adjust Invoice',
+        ),
+      ],
+    );
   }
 
   Future<void> _logout() async {
@@ -184,45 +210,132 @@ class _ScanScreenState extends State<ScanScreen> {
                             ),
                           ],
                         )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: colorScheme.primaryContainer,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.document_scanner_rounded,
-                                size: 64,
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Scan Invoice',
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                              ),
-                              child: Text(
-                                'Take a photo or upload an invoice to automatically extract medicines and quantities.',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(
-                                      color: colorScheme.onSurface.withValues(
-                                        alpha: 0.6,
+                      : _scannedItems.isNotEmpty
+                          ? Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Detected Items (${_scannedItems.length})',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
                                       ),
+                                      TextButton.icon(
+                                        onPressed: () => setState(() => _scannedItems = []),
+                                        icon: const Icon(Icons.clear_all, size: 18),
+                                        label: const Text('Clear'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                Expanded(
+                                  child: ListView.separated(
+                                    padding: const EdgeInsets.all(12),
+                                    itemCount: _scannedItems.length,
+                                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                    itemBuilder: (context, index) {
+                                      final item = _scannedItems[index];
+                                      return Card(
+                                        elevation: 0,
+                                        color: colorScheme.surface,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          side: BorderSide(
+                                            color: colorScheme.outline.withValues(alpha: 0.2),
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          title: Text(
+                                            item['name'] ?? 'Unknown',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          trailing: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                'Qty: ${item['quantity']}',
+                                                style: TextStyle(
+                                                  color: colorScheme.primary,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              Text(
+                                                '\$${(item['price'] ?? 0.0).toStringAsFixed(2)}',
+                                                style: Theme.of(context).textTheme.labelSmall,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: FilledButton.icon(
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ReviewScreen(items: _scannedItems),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(Icons.rate_review),
+                                      label: const Text('Review & Submit'),
                                     ),
-                              ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primaryContainer,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.document_scanner_rounded,
+                                    size: 64,
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                Text(
+                                  'Scan Invoice',
+                                  style: Theme.of(context).textTheme.headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 8),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 32,
+                                  ),
+                                  child: Text(
+                                    'Take a photo or upload an invoice to automatically extract medicines and quantities.',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context).textTheme.bodyMedium
+                                        ?.copyWith(
+                                          color: colorScheme.onSurface.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                        ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
                 ),
               ),
               const SizedBox(height: 24),
