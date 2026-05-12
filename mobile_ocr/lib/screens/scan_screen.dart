@@ -20,6 +20,7 @@ class _ScanScreenState extends State<ScanScreen> {
   final _ocrService = OcrService();
   String _statusMessage = 'Ready to scan';
   List<Map<String, dynamic>> _scannedItems = [];
+  bool _isTableMode = false;
 
   Future<void> _pickAndScan(ImageSource source) async {
     final XFile? image = await _picker.pickImage(
@@ -66,12 +67,18 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() => _statusMessage = 'Extracting medicines...');
 
       // Parse the OCR text
-      final items = _ocrService.parseInvoiceText(rawText);
+      final List<Map<String, dynamic>> items;
+      if (_isTableMode) {
+        items = _ocrService.parseTableData(recognized);
+      } else {
+        items = _ocrService.parseInvoiceText(rawText);
+      }
       print('Parsed Items: $items');
 
       setState(() {
         _isProcessing = false;
         _statusMessage = 'Ready to scan';
+        _isTableMode = false; // Reset for next scan
         _scannedItems = items;
       });
 
@@ -338,7 +345,50 @@ class _ScanScreenState extends State<ScanScreen> {
                             ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+
+              // Table Mode Toggle
+              if (!_isProcessing && _scannedItems.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.table_chart_outlined,
+                        size: 20,
+                        color: _isTableMode ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Table Selection Mode',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Switch(
+                        value: _isTableMode,
+                        onChanged: (val) => setState(() => _isTableMode = val),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_isTableMode && !_isProcessing && _scannedItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 0),
+                  child: Text(
+                    'Tip: Crop specifically to the table data area for better results.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.primary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
 
               // Action Buttons
               Row(
@@ -352,7 +402,7 @@ class _ScanScreenState extends State<ScanScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.photo_library_outlined),
-                      label: const Text('Gallery'),
+                      label: Text(_isTableMode ? 'Gallery (Table)' : 'Gallery'),
                       onPressed: _isProcessing
                           ? null
                           : () => _pickAndScan(ImageSource.gallery),
@@ -379,7 +429,9 @@ class _ScanScreenState extends State<ScanScreen> {
                             )
                           : const Icon(Icons.camera_alt_rounded),
                       label: Text(
-                        _isProcessing ? 'Processing...' : 'Take Photo',
+                        _isProcessing 
+                            ? 'Processing...' 
+                            : (_isTableMode ? 'Scan Table' : 'Take Photo'),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       onPressed: _isProcessing

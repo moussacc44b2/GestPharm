@@ -1,3 +1,5 @@
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
 class OcrService {
   /// Parses raw OCR text block-by-block and extracts medicine items.
   List<Map<String, dynamic>> parseInvoiceText(String rawText) {
@@ -30,6 +32,152 @@ class OcrService {
     }
 
     return items;
+  }
+
+  /// New method to parse table data using ML Kit structured text
+  List<Map<String, dynamic>> parseTableData(RecognizedText recognizedText) {
+    final List<TextLine> allLines = [];
+    for (var block in recognizedText.blocks) {
+      allLines.addAll(block.lines);
+    }
+
+    if (allLines.isEmpty) return [];
+
+    // 1. Sort lines by Y-coordinate (top to bottom)
+    allLines.sort((a, b) => a.boundingBox.top.compareTo(b.boundingBox.top));
+
+    // 2. Group into rows based on vertical proximity
+    final List<List<TextLine>> rows = [];
+    if (allLines.isNotEmpty) {
+      List<TextLine> currentRow = [allLines[0]];
+      for (int i = 1; i < allLines.length; i++) {
+        final prev = currentRow.last;
+        final curr = allLines[i];
+        
+        final prevCenterY = prev.boundingBox.top + prev.boundingBox.height / 2;
+        final currCenterY = curr.boundingBox.top + curr.boundingBox.height / 2;
+        
+        // Tolerance: half the height of the previous line
+        if ((currCenterY - prevCenterY).abs() < prev.boundingBox.height * 0.8) {
+          currentRow.add(curr);
+        } else {
+          rows.add(currentRow);
+          currentRow = [curr];
+        }
+      }
+      rows.add(currentRow);
+    }
+
+    // 3. Parse each row
+    final List<Map<String, dynamic>> items = [];
+    for (var rowLines in rows) {
+      // Sort elements within the row by X-coordinate (left to right)
+      rowLines.sort((a, b) => a.boundingBox.left.compareTo(b.boundingBox.left));
+      
+      final item = _parseRowFromStructuredLines(rowLines);
+      if (item != null) {
+        items.add(item);
+      }
+    }
+
+    return items;
+  }
+
+  Map<String, dynamic>? _parseRowFromStructuredLines(List<TextLine> lines) {
+    String name = "";
+    final List<double> allNumbers = [];
+    
+    final skipKeywords = RegExp(
+      r'total|tax|tva|subtotal|invoice|facture|date|ref|page|n°|no\.|prix|quantite|qty|unit|total|montant',
+      caseSensitive: false,
+    );
+
+    for (var line in lines) {
+      final text = line.text.trim();
+      if (skipKeywords.hasMatch(text)) continue; // Don't return null, just skip this specific text
+
+      final numbers = _extractNumbers(text);
+      if (numbers.isEmpty) {
+        // Build the product name from non-numeric parts
+        if (text.length > 2) {
+          name = name.isEmpty ? text : "$name $text";
+        }
+      } else {
+        allNumbers.addAll(numbers);
+      }
+    }
+
+    if (name.isEmpty || allNumbers.isEmpty) return null;
+
+    double price = 0;
+    int quantity = 1;
+
+    if (allNumbers.length >= 3) {
+      // Find A * B = C relationship
+      bool foundMath = false;
+      for (int i = 0; i < allNumbers.length; i++) {
+        for (int j = 0; j < allNumbers.length; j++) {
+          if (i == j) continue;
+          for (int k = 0; k < allNumbers.length; k++) {
+            if (k == i || k == j) continue;
+            
+            final a = allNumbers[i];
+            final b = allNumbers[j];
+            final total = allNumbers[k];
+
+            if ((a * b - total).abs() < 0.5) {
+              // Usually price > quantity
+              if (a >= b) {
+                price = a;
+                quantity = b.round();
+              } else {
+                price = b;
+                quantity = a.round();
+              }
+              foundMath = true;
+              break;
+            }
+          }
+          if (foundMath) break;
+        }
+        if (foundMath) break;
+      }
+
+      if (!foundMath) {
+        final sorted = List<double>.from(allNumbers)..sort();
+        // If no math, assume largest is total, second largest is price
+        price = sorted[sorted.length - 2];
+        quantity = sorted[0].round();
+      }
+    } else if (allNumbers.length == 2) {
+      final n1 = allNumbers[0];
+      final n2 = allNumbers[1];
+      // Heuristic: Price is usually larger or has decimals
+      if (n1 > n2 || n1.toString().contains('.')) {
+        price = n1;
+        quantity = n2.round();
+      } else {
+        price = n2;
+        quantity = n1.round();
+      }
+    } else {
+      price = allNumbers[0];
+      quantity = 1;
+    }
+
+    // Clean up name: remove any leftover numbers that might have been part of the text
+    for (final n in allNumbers) {
+      final pattern = n % 1 == 0 ? n.toInt().toString() : n.toString().replaceAll('.', '[.,]');
+      name = name.replaceFirst(RegExp('\\b$pattern\\b'), '').trim();
+    }
+
+    if (name.length < 2 || price == 0) return null;
+
+    return {
+      'name': name.replaceAll(RegExp(r'\s+'), ' '),
+      'quantity': quantity,
+      'price': price,
+    };
   }
 
   List<double> _extractNumbers(String line) {
