@@ -12,6 +12,7 @@ class InventoryItem extends Model
 
     protected $fillable = [
         'medicine_id',
+        'barcode',
         'supplier_id',
         'batch_number',
         'expiry_date',

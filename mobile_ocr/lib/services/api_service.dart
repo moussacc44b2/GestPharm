@@ -91,4 +91,90 @@ class ApiService {
       return {'success': false, 'message': body['message'] ?? 'Failed to submit'};
     }
   }
+
+  // --- Barcode Scanner ---
+  static Future<Map<String, dynamic>> lookupBarcode(String barcode) async {
+    final baseUrl = await _getBaseUrl();
+    final token = await _getToken();
+
+    if (token == null) {
+      return {'success': false, 'message': 'Not authenticated'};
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/inventory/by-barcode/$barcode'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    final body = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': body};
+    } else {
+      return {'success': false, 'message': body['message'] ?? 'Barcode not found'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> pushToCart(int inventoryItemId, {int quantity = 1}) async {
+    final baseUrl = await _getBaseUrl();
+    final token = await _getToken();
+
+    if (token == null) {
+      return {'success': false, 'message': 'Not authenticated'};
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/barcode-cart'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'inventory_item_id': inventoryItemId,
+        'quantity': quantity,
+      }),
+    );
+
+    if (response.statusCode == 201) {
+      return {'success': true};
+    } else {
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Failed to add to cart'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> pushBarcodeToCart(String barcode, {int quantity = 1}) async {
+    final baseUrl = await _getBaseUrl();
+    final token = await _getToken();
+
+    if (token == null) {
+      return {'success': false, 'message': 'Not authenticated'};
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/barcode-cart'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'barcode': barcode,
+        'quantity': quantity,
+      }),
+    );
+
+    final body = jsonDecode(response.body);
+
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': body};
+    } else {
+      return {'success': false, 'message': body['message'] ?? 'Failed to add to cart'};
+    }
+  }
 }

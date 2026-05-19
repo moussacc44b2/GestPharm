@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\InventoryItem;
+use App\Models\CashTransaction;
+use App\Models\Debt;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +82,7 @@ class PurchaseController extends Controller
             'items.*.medicine_id' => 'required|exists:medicines,id',
             'items.*.batch_number' => 'nullable|string',
             'items.*.expiry_date' => 'nullable|date',
+            'amount_paid' => 'nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
@@ -92,9 +95,24 @@ class PurchaseController extends Controller
                     'medicine_id' => $mappedItem['medicine_id']
                 ]);
 
+                // Check and generate barcode if it does not exist
+                $medicine = \App\Models\Medicine::findOrFail($mappedItem['medicine_id']);
+                $barcode = $medicine->barcode;
+
+                if (empty($barcode)) {
+                    do {
+                        $barcode = '613' . str_pad(mt_rand(0, 9999999999), 10, '0', STR_PAD_LEFT);
+                    } while (\App\Models\Medicine::where('barcode', $barcode)->exists());
+
+                    $medicine->update([
+                        'barcode' => $barcode
+                    ]);
+                }
+
                 // Create inventory item (stock)
                 $inventoryItem = InventoryItem::create([
                     'medicine_id' => $mappedItem['medicine_id'],
+                    'barcode' => $barcode,
                     'supplier_id' => $purchase->supplier_id,
                     'batch_number' => $mappedItem['batch_number'] ?? null,
                     'expiry_date' => $mappedItem['expiry_date'] ?? null,
@@ -118,6 +136,37 @@ class PurchaseController extends Controller
             }
 
             $purchase->update(['status' => 'completed']);
+
+            $amountPaid = $validated['amount_paid'] ?? $purchase->total_amount;
+
+            // Record cash outflow
+            if ($amountPaid > 0) {
+                CashTransaction::create([
+                    'user_id' => $request->user()?->id,
+                    'type' => 'outflow',
+                    'amount' => $amountPaid,
+                    'category' => 'purchase',
+                    'description' => 'Purchase Approved #' . ($purchase->invoice_number ?? $purchase->id),
+                    'reference_type' => Purchase::class,
+                    'reference_id' => $purchase->id,
+                ]);
+            }
+
+            // Create supplier debt if actual amount paid is less than total amount
+            if ($amountPaid < $purchase->total_amount) {
+                $remainingDebt = $purchase->total_amount - $amountPaid;
+                if ($remainingDebt > 0) {
+                    Debt::create([
+                        'type' => 'supplier',
+                        'supplier_id' => $purchase->supplier_id,
+                        'purchase_id' => $purchase->id,
+                        'total_amount' => $purchase->total_amount,
+                        'paid_amount' => $amountPaid,
+                        'status' => ($amountPaid > 0) ? 'partially_paid' : 'unpaid',
+                        'due_date' => now()->addDays(30),
+                    ]);
+                }
+            }
 
             DB::commit();
             return response()->json(['message' => 'Purchase approved and stock updated successfully', 'purchase' => $purchase->load('items.medicine')]);

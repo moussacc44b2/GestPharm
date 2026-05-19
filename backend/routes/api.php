@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\BarcodeCartController;
+use App\Http\Controllers\Api\CaisseController;
 use Illuminate\Support\Facades\Route;
 
 // Public auth routes
@@ -38,7 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('purchases', PurchaseController::class)->except(['update']);
     Route::post('/purchases/{purchase}/approve', [PurchaseController::class, 'approve']);
 
-    Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show', 'destroy']);
 
     Route::get('/dashboard/stats', [ReportController::class, 'dashboardStats']);
 
@@ -50,4 +52,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{inventoryItem}', [InventoryController::class, 'update']);
         Route::delete('/{inventoryItem}', [InventoryController::class, 'destroy']);
     });
+
+    // Cash Register & Debt Management (Caisse & Debts)
+    Route::prefix('caisse')->group(function () {
+        Route::get('/stats', [CaisseController::class, 'stats']);
+        Route::get('/transactions', [CaisseController::class, 'index']);
+        Route::post('/transactions', [CaisseController::class, 'store']);
+        Route::get('/debts', [CaisseController::class, 'debts']);
+        Route::post('/debts/{debt}/pay', [CaisseController::class, 'payDebt']);
+    });
+
+    // Barcode Scanner → POS Bridge
+    Route::get('/inventory/by-barcode/{barcode}', [BarcodeCartController::class, 'lookupByBarcode']);
+    Route::get('/barcode-cart', [BarcodeCartController::class, 'index']);
+    Route::post('/barcode-cart', [BarcodeCartController::class, 'store']);
+    Route::delete('/barcode-cart', [BarcodeCartController::class, 'clear']);
 });
