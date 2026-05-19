@@ -46,14 +46,20 @@ class _BarcodeScreenState extends State<BarcodeScreen>
     if (barcode == null || barcode.rawValue == null) return;
 
     final code = barcode.rawValue!;
+    
+    // 1. Guard against overlapping active scan processing
+    if (_isProcessing) return;
+    
+    // 2. Guard against scanning the exact same barcode repeatedly within the cool-down
     if (code == _lastScannedCode) return;
 
     setState(() {
+      _isProcessing = true;
       _lastScannedCode = code;
     });
 
-    // Reset the cool-down for this specific barcode after 1.5 seconds
-    Future.delayed(const Duration(milliseconds: 1500), () {
+    // Reset the cool-down for this specific barcode after 4.0 seconds (gives plenty of time to swap products)
+    Future.delayed(const Duration(milliseconds: 4000), () {
       if (mounted && _lastScannedCode == code) {
         setState(() => _lastScannedCode = null);
       }
@@ -66,6 +72,11 @@ class _BarcodeScreenState extends State<BarcodeScreen>
     final result = await ApiService.pushBarcodeToCart(code);
 
     if (!mounted) return;
+
+    // 3. Unlock scanner processing now that API is complete
+    setState(() {
+      _isProcessing = false;
+    });
 
     if (result['success'] == true) {
       // Play a very distinct, powerful success beep and heavy vibration
