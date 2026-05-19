@@ -19,6 +19,9 @@ class _BarcodeScreenState extends State<BarcodeScreen>
   List<Map<String, dynamic>> _scannedHistory = [];
   late AnimationController _pulseController;
   Map<String, dynamic>? _activeScanAlert;
+  
+  // Track timestamps of scans in-memory to prevent duplicate scans with zero delay
+  final Map<String, DateTime> _recentScans = {};
 
   @override
   void initState() {
@@ -47,42 +50,36 @@ class _BarcodeScreenState extends State<BarcodeScreen>
 
     final code = barcode.rawValue!;
     
-    // 1. Guard against overlapping active scan processing
-    if (_isProcessing) return;
-    
-    // 2. Guard against scanning the exact same barcode repeatedly within the cool-down
-    if (code == _lastScannedCode) return;
-
-    setState(() {
-      _isProcessing = true;
-      _lastScannedCode = code;
-    });
-
-    // Reset the cool-down for this specific barcode after 4.0 seconds (gives plenty of time to swap products)
-    Future.delayed(const Duration(milliseconds: 4000), () {
-      if (mounted && _lastScannedCode == code) {
-        setState(() => _lastScannedCode = null);
+    // 1. Instant local in-memory check to prevent duplicates (ignores same code within 2.5 seconds)
+    final now = DateTime.now();
+    if (_recentScans.containsKey(code)) {
+      final lastScanTime = _recentScans[code]!;
+      if (now.difference(lastScanTime).inMilliseconds < 2500) {
+        return; // Ignore duplicate scan instantly with 0 latency
       }
+    }
+    _recentScans[code] = now;
+
+    // 2. Immediate, light-speed auditory and tactile feedback (no network lag!)
+    HapticFeedback.mediumImpact();
+    BeepService.playSuccess();
+
+    // Show temporary "Adding..." state instantly in the alert overlay
+    setState(() {
+      _activeScanAlert = {
+        'success': true,
+        'title': 'جاري الإضافة... / En cours',
+        'message': 'يتم التحقق من المخزون والاتصال بالخادم...',
+        'barcode': code,
+      };
     });
 
-    // Immediate subtle tactile feedback indicating camera detected code
-    HapticFeedback.selectionClick();
-
-    // Call single optimized API to add to cart in one fast roundtrip!
+    // Call single optimized API to add to cart in one fast background trip!
     final result = await ApiService.pushBarcodeToCart(code);
 
     if (!mounted) return;
 
-    // 3. Unlock scanner processing now that API is complete
-    setState(() {
-      _isProcessing = false;
-    });
-
     if (result['success'] == true) {
-      // Play a very distinct, powerful success beep and heavy vibration
-      HapticFeedback.heavyImpact();
-      BeepService.playSuccess();
-      
       final scanData = result['data'] ?? {};
       final inventoryItem = scanData['inventory_item'] ?? {};
       final medicine = inventoryItem['medicine'] ?? {};
@@ -107,7 +104,7 @@ class _BarcodeScreenState extends State<BarcodeScreen>
         };
       });
     } else {
-      // Play a distinct error buzz and device vibration
+      // Retroactive error handling: Play distinct error buzz and device vibration
       HapticFeedback.vibrate();
       BeepService.playError();
 
