@@ -25,20 +25,30 @@ class CaisseController extends Controller
             ->selectRaw('SUM(total_amount - paid_amount) as outstanding')
             ->value('outstanding') ?? 0;
 
-        // Monthly overview (last 6 months) for chart metrics
+        // Fetch all monthly transactions in a single grouped query
+        $sixMonthsAgo = now()->subMonths(5)->startOfMonth();
+        $monthlyStats = CashTransaction::selectRaw("
+                DATE_TRUNC('month', created_at) as month_date,
+                type,
+                SUM(amount) as total_amount
+            ")
+            ->where('created_at', '>=', $sixMonthsAgo)
+            ->groupBy('month_date', 'type')
+            ->get();
+
         $chartData = [];
         for ($i = 5; $i >= 0; $i--) {
             $monthStart = now()->subMonths($i)->startOfMonth();
-            $monthEnd = now()->subMonths($i)->endOfMonth();
             $monthName = $monthStart->format('M Y');
 
-            $inflow = CashTransaction::where('type', 'inflow')
-                ->whereBetween('created_at', [$monthStart, $monthEnd])
-                ->sum('amount');
+            // Find inflow and outflow in the pre-fetched collection
+            $inflow = $monthlyStats->first(function ($item) use ($monthStart) {
+                return $item->type === 'inflow' && \Carbon\Carbon::parse($item->month_date)->isSameMonth($monthStart);
+            })?->total_amount ?? 0;
 
-            $outflow = CashTransaction::where('type', 'outflow')
-                ->whereBetween('created_at', [$monthStart, $monthEnd])
-                ->sum('amount');
+            $outflow = $monthlyStats->first(function ($item) use ($monthStart) {
+                return $item->type === 'outflow' && \Carbon\Carbon::parse($item->month_date)->isSameMonth($monthStart);
+            })?->total_amount ?? 0;
 
             $chartData[] = [
                 'month' => $monthName,

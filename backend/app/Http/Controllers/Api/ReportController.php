@@ -15,13 +15,13 @@ class ReportController extends Controller
     {
         $totalMedicines = Medicine::count();
         $totalStock = InventoryItem::sum('quantity');
-        $todaySales = Sale::whereDate('created_at', today())->sum('total_amount');
+        $todaySales = Sale::where('created_at', '>=', today())->sum('total_amount');
         
-        $lowStockCount = Medicine::whereHas('inventoryItems', function($q) {
-            // Simplified for now
-        })->get()->filter(function($m) {
-            return $m->total_stock <= $m->min_stock_level;
-        })->count();
+        $lowStockCount = Medicine::withSum('inventoryItems as total_stock', 'quantity')
+            ->get()
+            ->filter(function($m) {
+                return ($m->total_stock ?? 0) <= $m->min_stock_level;
+            })->count();
 
         // Recent sales for chart
         $salesHistory = Sale::select(

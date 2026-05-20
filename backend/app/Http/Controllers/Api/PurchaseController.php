@@ -87,8 +87,20 @@ class PurchaseController extends Controller
 
         DB::beginTransaction();
         try {
+            $purchaseItemIds = collect($validated['items'])->pluck('id');
+            $pItems = PurchaseItem::where('purchase_id', $purchase->id)
+                ->whereIn('id', $purchaseItemIds)
+                ->get()
+                ->keyBy('id');
+
+            $medicineIds = collect($validated['items'])->pluck('medicine_id');
+            $medicines = \App\Models\Medicine::whereIn('id', $medicineIds)->get()->keyBy('id');
+
             foreach ($validated['items'] as $mappedItem) {
-                $pItem = PurchaseItem::where('id', $mappedItem['id'])->where('purchase_id', $purchase->id)->firstOrFail();
+                $pItem = $pItems->get($mappedItem['id']);
+                if (!$pItem) {
+                    throw new \Exception("Purchase item not found.");
+                }
                 
                 // Update mapped medicine
                 $pItem->update([
@@ -96,7 +108,11 @@ class PurchaseController extends Controller
                 ]);
 
                 // Check and generate barcode if it does not exist
-                $medicine = \App\Models\Medicine::findOrFail($mappedItem['medicine_id']);
+                $medicine = $medicines->get($mappedItem['medicine_id']);
+                if (!$medicine) {
+                    throw new \Exception("Medicine not found.");
+                }
+                
                 $barcode = $medicine->barcode;
 
                 if (empty($barcode)) {
@@ -118,7 +134,7 @@ class PurchaseController extends Controller
                     'expiry_date' => $mappedItem['expiry_date'] ?? null,
                     'quantity' => $pItem->quantity,
                     'purchase_price' => $pItem->purchase_price,
-                    // If selling price is unknown from OCR, default to purchase price + 20% margin, or fetch existing
+                    // If selling price is unknown from OCR, default to purchase price + 20% margin
                     'selling_price' => $pItem->purchase_price * 1.20, 
                 ]);
 

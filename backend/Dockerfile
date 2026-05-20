@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
     unzip \
-    && docker-php-ext-install pdo pdo_pgsql pgsql mbstring exif pcntl bcmath gd zip \
+    && docker-php-ext-install pdo pdo_pgsql pgsql mbstring exif pcntl bcmath gd zip opcache \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apt-get clean \
@@ -44,6 +44,7 @@ RUN if [ -f composer.lock ]; then composer install --no-dev --optimize-autoloade
 
 # Copy the rest of the application
 COPY . .
+COPY opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \

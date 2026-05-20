@@ -73,10 +73,10 @@ class InventoryController extends Controller
     
     public function lowStock()
     {
-        return Medicine::whereHas('inventoryItems', function($query) {
-            // This is a simplified check. A more robust one would sum the quantities.
-        })->get()->filter(function($medicine) {
-            return $medicine->total_stock <= $medicine->min_stock_level;
-        })->values();
+        return Medicine::withSum('inventoryItems as total_stock', 'quantity')
+            ->get()
+            ->filter(function($medicine) {
+                return ($medicine->total_stock ?? 0) <= $medicine->min_stock_level;
+            })->values();
     }
 }

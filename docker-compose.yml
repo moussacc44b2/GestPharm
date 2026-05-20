@@ -3,8 +3,6 @@ version: '3.8'
 services:
 
   # PostgreSQL 16
-  frontend:
-    command: sh -c "npm run dev -- -H 0.0.0.0"
   postgres:
     image: postgres:16-alpine
     container_name: gestpharm_postgres
@@ -49,6 +47,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/var/www/html
+      - ./backend/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini:ro
     environment:
       APP_ENV: local
       APP_DEBUG: "true"

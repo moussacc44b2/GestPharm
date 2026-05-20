@@ -92,6 +92,39 @@ class ApiService {
     }
   }
 
+  // --- Suppliers ---
+  static Future<List<dynamic>> fetchSuppliers() async {
+    final baseUrl = await _getBaseUrl();
+    final token = await _getToken();
+
+    if (token == null) {
+      return [];
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/suppliers'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        if (body is List) {
+          return body;
+        } else if (body is Map && body.containsKey('data')) {
+          return body['data'];
+        }
+      }
+    } catch (e) {
+      // Return empty list on network or parsing error
+    }
+    return [];
+  }
+
   // --- Barcode Scanner ---
   static Future<Map<String, dynamic>> lookupBarcode(String barcode) async {
     final baseUrl = await _getBaseUrl();

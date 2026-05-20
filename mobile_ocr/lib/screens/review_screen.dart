@@ -13,12 +13,30 @@ class ReviewScreen extends StatefulWidget {
 class _ReviewScreenState extends State<ReviewScreen> {
   late List<Map<String, dynamic>> _items;
   bool _isSending = false;
+  List<dynamic> _suppliers = [];
+  int? _selectedSupplierId;
+  bool _isLoadingSuppliers = true;
 
   @override
   void initState() {
     super.initState();
     // Create mutable copies for editing
     _items = widget.items.map((item) => Map<String, dynamic>.from(item)).toList();
+    _loadSuppliers();
+  }
+
+  Future<void> _loadSuppliers() async {
+    try {
+      final suppliers = await ApiService.fetchSuppliers();
+      setState(() {
+        _suppliers = suppliers;
+        _isLoadingSuppliers = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingSuppliers = false;
+      });
+    }
   }
 
   void _removeItem(int index) {
@@ -46,6 +64,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final result = await ApiService.submitPurchase(
       items: _items,
       totalAmount: _totalAmount,
+      supplierId: _selectedSupplierId,
     );
 
     if (!mounted) return;
@@ -116,6 +135,61 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ],
             ),
           ),
+
+          // Supplier Selection Dropdown
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: colorScheme.outlineVariant),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _isLoadingSuppliers
+                    ? const Row(
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Text('جاري تحميل قائمة الموردين...'),
+                        ],
+                      )
+                    : DropdownButtonFormField<int?>(
+                        value: _selectedSupplierId,
+                        decoration: InputDecoration(
+                          labelText: 'المورد (Supplier)',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          isDense: true,
+                          prefixIcon: const Icon(Icons.business_rounded),
+                        ),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('اختر المورد (اختياري)'),
+                          ),
+                          ..._suppliers.map((supplier) {
+                            return DropdownMenuItem<int?>(
+                              value: supplier['id'] as int?,
+                              child: Text(supplier['name'] ?? ''),
+                            );
+                          }),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedSupplierId = value;
+                          });
+                        },
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
 
           // Items List
           Expanded(

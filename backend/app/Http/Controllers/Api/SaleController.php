@@ -38,44 +38,29 @@ class SaleController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
-            $totalAmount = 0;
-            $saleItems = [];
+            $inventoryItemIds = collect($validated['items'])->pluck('inventory_item_id');
+            // Pre-fetch and lock all inventory items with their medicines in exactly 1 query
+            $inventoryItems = InventoryItem::with('medicine')->lockForUpdate()->whereIn('id', $inventoryItemIds)->get()->keyBy('id');
 
+            $totalAmount = 0;
+            
+            // First loop: Validate stock levels and calculate total amount
             foreach ($validated['items'] as $itemData) {
-                $inventoryItem = InventoryItem::lockForUpdate()->find($itemData['inventory_item_id']);
+                $inventoryItem = $inventoryItems->get($itemData['inventory_item_id']);
+                if (!$inventoryItem) {
+                    throw new \Exception("Inventory item not found.");
+                }
 
                 if ($inventoryItem->quantity < $itemData['quantity']) {
                     throw new \Exception("Insufficient stock for medicine: {$inventoryItem->medicine->name}");
                 }
 
-                $itemTotal = $inventoryItem->selling_price * $itemData['quantity'];
-                $totalAmount += $itemTotal;
-
-                $saleItems[] = new SaleItem([
-                    'inventory_item_id' => $inventoryItem->id,
-                    'quantity' => $itemData['quantity'],
-                    'unit_price' => $inventoryItem->selling_price,
-                    'total_price' => $itemTotal,
-                ]);
-
-                // Update stock
-                $inventoryItem->decrement('quantity', $itemData['quantity']);
-
-                // Log movement
-                \App\Models\InventoryMovement::create([
-                    'inventory_item_id' => $inventoryItem->id,
-                    'user_id' => $request->user()?->id,
-                    'type' => 'out',
-                    'quantity' => $itemData['quantity'],
-                    'balance_after' => $inventoryItem->fresh()->quantity,
-                    'reference_type' => 'Sale',
-                    'reference_id' => null, // Will update after sale is created
-                    'reason' => 'Sale Transaction',
-                ]);
+                $totalAmount += $inventoryItem->selling_price * $itemData['quantity'];
             }
 
             $changeAmount = $validated['amount_paid'] - $totalAmount;
 
+            // Create the sale record first
             $sale = Sale::create([
                 'user_id' => $request->user()?->id,
                 'customer_name' => $validated['customer_name'],
@@ -87,13 +72,38 @@ class SaleController extends Controller
                 'notes' => $validated['notes'],
             ]);
 
-            $sale->items()->saveMany($saleItems);
+            $saleItems = [];
 
-            // Update movement reference_id
-            \App\Models\InventoryMovement::where('reference_type', 'Sale')
-                ->whereNull('reference_id')
-                ->where('user_id', $request->user()?->id)
-                ->update(['reference_id' => $sale->id]);
+            // Second loop: Update quantities, create sale items, and write inventory movements with direct reference_id
+            foreach ($validated['items'] as $itemData) {
+                $inventoryItem = $inventoryItems->get($itemData['inventory_item_id']);
+                $itemTotal = $inventoryItem->selling_price * $itemData['quantity'];
+
+                $saleItems[] = new SaleItem([
+                    'inventory_item_id' => $inventoryItem->id,
+                    'quantity' => $itemData['quantity'],
+                    'unit_price' => $inventoryItem->selling_price,
+                    'total_price' => $itemTotal,
+                ]);
+
+                // Update stock in database
+                $newQuantity = $inventoryItem->quantity - $itemData['quantity'];
+                $inventoryItem->update(['quantity' => $newQuantity]);
+
+                // Log movement directly with sale->id (no bulk update needed, no race conditions)
+                \App\Models\InventoryMovement::create([
+                    'inventory_item_id' => $inventoryItem->id,
+                    'user_id' => $request->user()?->id,
+                    'type' => 'out',
+                    'quantity' => $itemData['quantity'],
+                    'balance_after' => $newQuantity,
+                    'reference_type' => 'Sale',
+                    'reference_id' => $sale->id,
+                    'reason' => 'Sale Transaction',
+                ]);
+            }
+
+            $sale->items()->saveMany($saleItems);
 
             // Record cash register inflow based on actual received cash (amount_paid - change_amount)
             $actualReceived = $sale->amount_paid - $sale->change_amount;
