@@ -42,4 +42,9 @@ class Debt extends Model
     {
         return $this->belongsTo(Purchase::class);
     }
+
+    public function payments()
+    {
+        return $this->morphMany(CashTransaction::class, 'reference');
+    }
 }

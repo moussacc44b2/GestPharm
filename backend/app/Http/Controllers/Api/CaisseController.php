@@ -108,14 +108,15 @@ class CaisseController extends Controller
 
     public function debts(Request $request)
     {
-        $query = Debt::with(['sale.items.inventoryItem.medicine', 'purchase.items.medicine', 'supplier']);
+        $query = Debt::with(['sale.items.inventoryItem.medicine', 'purchase.items.medicine', 'supplier', 'payments']);
 
         if ($request->has('type')) {
             $query->where('type', $request->type);
         }
 
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $statuses = explode(',', $request->status);
+            $query->whereIn('status', $statuses);
         } else {
             $query->where('status', '!=', 'paid');
         }
@@ -164,7 +165,7 @@ class CaisseController extends Controller
 
             return response()->json([
                 'message' => 'Debt payment registered successfully',
-                'debt' => $debt->load(['sale', 'purchase', 'supplier']),
+                'debt' => $debt->load(['sale', 'purchase', 'supplier', 'payments']),
             ]);
         });
     }
